@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* 共通ユーティリティを v4 の @utility で宣言 */
+@utility bubble-base {
+  @apply max-w-[80%] whitespace-pre-wrap break-words px-4 py-2 text-sm rounded-2xl shadow-sm;
+}
+
+@layer components {
+  .card { @apply bg-white/90 dark:bg-slate-800/80 backdrop-blur rounded-2xl shadow-sm ring-1 ring-slate-900/5; }
+  .btn-primary { @apply inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-white hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-400; }
+  .input-text { @apply w-full rounded-2xl border-2 border-slate-300 bg-white/95 p-4 shadow-inner focus:outline-none focus:border-sky-500 focus:ring-4 focus:ring-sky-100 dark:bg-slate-800 dark:border-slate-600; }
+
+  .bubble-right { @apply bubble-base bg-sky-600 text-white rounded-br-md my-2 md:my-3; }
+  .bubble-left  { @apply bubble-base bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-md ring-1 ring-slate-900/5 my-2 md:my-3; }
+
+  .role-user { @apply text-[10px] uppercase tracking-wider text-sky-600 dark:text-sky-300; }
+  .role-assistant { @apply text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400; }
+}

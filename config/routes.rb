@@ -12,9 +12,15 @@ Rails.application.routes.draw do
   # Defines the root path route ("/")
   # root "posts#index"
   root "messages#index"
+  resource :session, only: [:new, :create, :destroy]
   resources :messages, only: [:index, :create] do
     collection { post :stop }
   end
   mount ActionCable.server => "/cable"
   resources :conversations, only: [:edit, :update, :show]
+
+  # 開発用ログイン
+  if Rails.env.development?
+    get "/dev/login", to: "dev#login"
+  end
 end

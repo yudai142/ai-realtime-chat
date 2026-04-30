@@ -7,4 +7,12 @@
 #   ["Action", "Comedy", "Drama", "Horror"].each do |genre_name|
 #     MovieGenre.find_or_create_by!(name: genre_name)
 #   end
-Conversation.find_or_create_by!(title: "Default Conversation")
+
+# デモユーザー作成
+user = User.find_or_create_by!(email: "user@example.com") do |u|
+  u.password = "password"
+  u.password_confirmation = "password"
+end
+
+# デフォルト会話作成
+Conversation.find_or_create_by!(user_id: user.id, title: "Default Conversation")

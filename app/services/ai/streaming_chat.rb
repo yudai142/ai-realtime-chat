@@ -2,9 +2,9 @@ module Ai
   class StreamingChat
     Result = Struct.new(:text, :finish_reason, keyword_init: true)
 
-  def initialize(conversation_id:, stream_key: nil)
+  def initialize(conversation_id:, stream_key:)
     @conversation_id = conversation_id.presence || "global"
-    @stream_key = stream_key.presence || "chat_#{@conversation_id}"
+    @stream_key = stream_key
     @stop_flag_key = "stop:#{@conversation_id}"
   end
 

@@ -1,4 +1,5 @@
 class Conversation < ApplicationRecord
+  belongs_to :user
   has_many :messages, -> { order(:created_at) }, dependent: :destroy
 
   before_validation :clamp_params

@@ -23,5 +23,8 @@ module App
     #
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
+
+    # Rack::Attack ミドルウェア登録
+    config.middleware.use Rack::Attack
   end
 end

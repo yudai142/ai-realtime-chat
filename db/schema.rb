@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_30_090523) do
+ActiveRecord::Schema[7.2].define(version: 2026_04_30_091544) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -18,6 +18,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_30_090523) do
     t.string "title"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "system_prompt", default: "あなたは親切で簡潔に答えるアシスタントです。", null: false
+    t.string "model", default: "gpt-4o-mini", null: false
+    t.decimal "temperature", precision: 2, scale: 1, default: "0.7", null: false
+    t.decimal "top_p", precision: 2, scale: 1, default: "1.0", null: false
+    t.decimal "presence_penalty", precision: 2, scale: 1, default: "0.0", null: false
+    t.decimal "frequency_penalty", precision: 2, scale: 1, default: "0.0", null: false
   end
 
   create_table "messages", force: :cascade do |t|

@@ -16,4 +16,5 @@ Rails.application.routes.draw do
     collection { post :stop }
   end
   mount ActionCable.server => "/cable"
+  resources :conversations, only: [:edit, :update, :show]
 end

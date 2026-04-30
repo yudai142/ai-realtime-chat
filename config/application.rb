@@ -26,5 +26,12 @@ module App
 
     # Rack::Attack ミドルウェア登録
     config.middleware.use Rack::Attack
+    
+    # ========================================
+    # Chapter 7: Metrics Logging Middleware
+    # ========================================
+    # Add request metrics logging for monitoring and debugging
+    require "metrics_logger"
+    config.middleware.use MetricsLogger
   end
 end

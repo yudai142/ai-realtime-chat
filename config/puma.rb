@@ -20,8 +20,9 @@
 # Any libraries that use a connection pool or another resource pool should
 # be configured to provide at least as many connections as the number of
 # threads. This includes Active Record's `pool` parameter in `database.yml`.
-threads_count = ENV.fetch("RAILS_MAX_THREADS", 3)
-threads threads_count, threads_count
+min_threads = ENV.fetch("RAILS_MIN_THREADS", 3)
+max_threads = ENV.fetch("RAILS_MAX_THREADS", 3)
+threads min_threads, max_threads
 
 # Specifies the `port` that Puma will listen on to receive requests; default is 3000.
 port ENV.fetch("PORT", 3000)
@@ -32,3 +33,29 @@ plugin :tmp_restart
 # Specify the PID file. Defaults to tmp/pids/server.pid in development.
 # In other environments, only set the PID file if requested.
 pidfile ENV["PIDFILE"] if ENV["PIDFILE"]
+
+# ========================================
+# Chapter 7: Production Scale Design
+# ========================================
+
+# Workers configuration for multi-process model
+# Each worker runs its own thread pool
+# WEB_CONCURRENCY=0 (default) uses single process in development
+# Production typically: WEB_CONCURRENCY = CPU cores
+web_concurrency = ENV.fetch("WEB_CONCURRENCY", 0).to_i
+
+if web_concurrency.positive?
+  workers web_concurrency
+  preload_app!
+  
+  # On worker boot, we can add connection pool initialization
+  on_worker_boot do
+    # Connection pools should be per-worker to avoid resource exhaustion
+    ActiveRecord::Base.establish_connection
+  end
+end
+
+# WebSocket and long-running request timeout (in seconds)
+# Action Cable connections may hold connections for very long periods
+# Set appropriate timeout for production load balancers (typically 61-120s)
+worker_timeout 60

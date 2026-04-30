@@ -5,8 +5,13 @@ class Message < ApplicationRecord
   validates :content, presence: true
 
   scope :for_openai, -> {
-    order(:created_at).pluck(:role, :content).map { |r, c|
-      { role: r, content: c }
+    order(:created_at).map { |m|
+      { role: m.role_for_api, content: m.content }
     }
   }
+
+  # OpenAI API 用に role を文字列キーで返す
+  def role_for_api
+    self.class.roles.key(self.role)
+  end
 end

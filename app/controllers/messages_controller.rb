@@ -1,6 +1,12 @@
 class MessagesController < ApplicationController
   before_action :set_conversation
 
+  def index
+    @conversations = current_user.conversations.order(updated_at: :desc)
+    @conversation = current_user.conversations.first_or_create!(title: "Default Conversation")
+  end
+
+  # Chapter 9-5: Create with conversation switching support
   def create
     content = params.require(:message)[:content]
 
@@ -13,10 +19,10 @@ class MessagesController < ApplicationController
       head :too_many_requests and return
     end
 
-    # 保存（第4章と同様）
+    # 1) 保存
     @conversation.messages.create!(role: :user, content: content)
 
-    # コンテキストと会話設定
+    # 2) コンテキストと会話設定
     messages = Ai::ContextBuilder.new(@conversation, limit: 20).build_with(content)
     stream_key = "chat_u#{current_user.id}_c#{@conversation.id}"
     opts = @conversation.params_for_openai
@@ -24,10 +30,24 @@ class MessagesController < ApplicationController
     Rails.logger.info("Messages to OpenAI: #{messages.inspect}")
     Rails.logger.info("OpenAI params: #{opts.inspect}")
 
+    # 3) ストリーミング（ユーザー別ストリームキー）
     result = Ai::StreamingChat.new(conversation_id: @conversation.id, stream_key: stream_key)
                               .call!(messages, **opts)
 
+    # 4) 応答を保存
+    @conversation.update!(updated_at: Time.current)
     @conversation.messages.create!(role: :assistant, content: result.text, meta: { finish_reason: result.finish_reason })
+
+    # 5) タイトル自動生成
+    if @conversation.title.blank? || @conversation.title == "New conversation"
+      begin
+        title = Ai::TitleGenerator.new(@conversation).call
+        @conversation.update!(title: title)
+      rescue => e
+        Rails.logger.warn(auto_title_error: e.message)
+      end
+    end
+
     head :ok
   end
 
@@ -54,7 +74,12 @@ class MessagesController < ApplicationController
   end
 
   private
+  # Chapter 9-5: Set conversation with conversation_id from params or first conversation
   def set_conversation
-    @conversation = current_user.conversations.first_or_create!(title: "Default Conversation")
+    if params[:conversation_id].present?
+      @conversation = current_user.conversations.find(params[:conversation_id])
+    else
+      @conversation = current_user.conversations.first_or_create!(title: "Default Conversation")
+    end
   end
 end

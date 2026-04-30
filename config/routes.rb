@@ -16,17 +16,27 @@ Rails.application.routes.draw do
   get "manifest" => "rails/pwa#manifest", as: :pwa_manifest
 
   # Defines the root path route ("/")
-  # root "posts#index"
-  root "messages#index"
+  # Chapter 9-3: Root changed to conversations#index
+  root "conversations#index"
+  
   resource :session, only: [:new, :create, :destroy]
+  
+  # Chapter 9: Multiple conversations management
+  resources :conversations, only: [:index, :show, :create, :edit, :update, :destroy] do
+    member do
+      post :retitle
+      get :preset
+    end
+  end
+  
   resources :messages, only: [:index, :create] do
     collection do
       post :stop
       post :regenerate
     end
   end
+  
   mount ActionCable.server => "/cable"
-  resources :conversations, only: [:edit, :update, :show]
 
   # 開発用ログイン
   if Rails.env.development?

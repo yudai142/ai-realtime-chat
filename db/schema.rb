@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_04_30_100209) do
+ActiveRecord::Schema[7.2].define(version: 2026_04_30_142639) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -25,6 +25,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_04_30_100209) do
     t.decimal "presence_penalty", precision: 2, scale: 1, default: "0.0", null: false
     t.decimal "frequency_penalty", precision: 2, scale: 1, default: "0.0", null: false
     t.bigint "user_id", null: false
+    t.index ["title"], name: "index_conversations_on_title"
+    t.index ["updated_at"], name: "index_conversations_on_updated_at"
     t.index ["user_id"], name: "index_conversations_on_user_id"
   end
 

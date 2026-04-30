@@ -1,10 +1,10 @@
 class ConversationsController < ApplicationController
-  before_action :set_conversation, only: [:show, :edit, :update, :destroy, :preset, :retitle]
+  before_action :set_conversation, only: [:show, :edit, :update, :destroy, :preset, :retitle, :share, :archive, :restore]
 
   # Chapter 9-4: Index action with search and list/select
   def index
     @q = params[:q].to_s
-    scope = current_user.conversations.order(updated_at: :desc)
+    scope = current_user.conversations.active.order(updated_at: :desc)
     @conversations = @q.present? ? scope.where("title ILIKE ?", "%#{@q}%") : scope
     @conversation = params[:id].present? ? current_user.conversations.find_by(id: params[:id]) : @conversations.first
     @conversation ||= current_user.conversations.create!(title: "New conversation")
@@ -13,7 +13,7 @@ class ConversationsController < ApplicationController
 
   def show
     @q = params[:q].to_s
-    @conversations = current_user.conversations.order(updated_at: :desc)
+    @conversations = current_user.conversations.active.order(updated_at: :desc)
   end
 
   # Chapter 9-4: Create action
@@ -59,6 +59,25 @@ class ConversationsController < ApplicationController
     title = Ai::TitleGenerator.new(@conversation).call
     @conversation.update!(title: title)
     redirect_to conversation_path(@conversation), notice: "タイトルを更新しました"
+  end
+
+  # Chapter 10: Share action (signed_id 発行)
+  def share
+    token = @conversation.signed_id(purpose: :share, expires_in: 7.days)
+    url = shared_conversation_url(token: token)
+    render json: { url: url, expires_at: 7.days.from_now.iso8601 }
+  end
+
+  # Chapter 10: Archive action
+  def archive
+    @conversation.update!(archived_at: Time.current)
+    redirect_to conversations_path, notice: "アーカイブしました"
+  end
+
+  # Chapter 10: Restore action (復元)
+  def restore
+    @conversation.update!(archived_at: nil)
+    redirect_to conversation_path(@conversation), notice: "復元しました"
   end
 
   private

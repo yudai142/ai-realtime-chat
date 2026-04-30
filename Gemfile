@@ -62,3 +62,9 @@ group :test do
 end
 gem "redis", "~> 5.0"
 gem "ruby-openai"
+
+# PDF export
+gem "wicked_pdf"
+gem "wkhtmltopdf-binary"
+# Markdown rendering
+gem "commonmarker"

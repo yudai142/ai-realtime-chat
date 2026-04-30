@@ -2,6 +2,10 @@ class Conversation < ApplicationRecord
   belongs_to :user
   has_many :messages, -> { order(:created_at) }, dependent: :destroy
 
+  # Chapter 10: Archi ve/Delete management
+  scope :active,   -> { where(archived_at: nil) }
+  scope :archived, -> { where.not(archived_at: nil) }
+
   before_validation :clamp_params
 
   validates :model, presence: true

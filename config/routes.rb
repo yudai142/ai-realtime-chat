@@ -26,8 +26,14 @@ Rails.application.routes.draw do
     member do
       post :retitle
       get :preset
+      get  :export     # エクスポート
+      post :share      # 共有リンク発行
+      post :archive    # アーカイブ
     end
   end
+
+  # Chapter 10: 共有リンク（署名トークン）
+  get "/s/:token", to: "shares#show", as: :shared_conversation
   
   resources :messages, only: [:index, :create] do
     collection do

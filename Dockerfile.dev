@@ -5,7 +5,7 @@ ENV TZ Asia/Tokyo
 ENV RAILS_ENV=development
 
 RUN apt-get update -qq && apt-get install -y \
-    ca-certificates curl gnupg postgresql-client vim nano git \
+    ca-certificates curl gnupg postgresql-client vim nano git fonts-noto-cjk \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

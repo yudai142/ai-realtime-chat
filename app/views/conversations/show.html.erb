@@ -25,7 +25,7 @@
 
   <!-- 右ペイン：会話内容 -->
   <main class="flex-1 flex flex-col">
-    <header class="h-15 bg-white/80 backdrop-blur flex items-center justify-between px-6 border-b border-slate-200">
+    <header class="h-15 bg-white/80 backdrop-blur flex items-center justify-between px-6 border-b border-slate-200 overflow-visible z-20">
       <h1 class="flex items-center gap-3 text-lg font-semibold text-slate-800">
         <span><%= h(@conversation.title.presence || '（無題）') %></span>
         <%= form_with url: retitle_conversation_path(@conversation), method: :post, local: true, data: { turbo: false }, class: "inline" do %>
@@ -34,11 +34,33 @@
         <% end %>
         <%= link_to "設定変更", edit_conversation_path(@conversation), class: "btn-secondary h-8 px-3 py-2 text-xs", data: { turbo: false } %>
       </h1>
-      <form id="stop-form" action="/messages/stop" method="post" class="flex items-center">
-        <%= hidden_field_tag :authenticity_token, form_authenticity_token %>
-        <input type="hidden" id="conversation_id" name="conversation_id" value="<%= @conversation.id %>">
-        <button type="submit" id="stop" class="btn-primary h-9 px-4" disabled>停止</button>
-      </form>
+      <div class="flex items-center gap-2">
+        <!-- Chapter 10: エクスポート / 共有 / アーカイブ -->
+        <details class="relative">
+          <summary class="btn-secondary h-8 px-3 text-xs cursor-pointer flex items-center">エクスポート</summary>
+          <ul class="absolute right-0 mt-1 bg-white border rounded-lg shadow text-sm z-50">
+            <li><a href="<%= export_conversation_path(@conversation, f: :md) %>" class="block px-3 py-2 hover:bg-slate-50">Markdown</a></li>
+            <li><a href="<%= export_conversation_path(@conversation, f: :html) %>" class="block px-3 py-2 hover:bg-slate-50">HTML</a></li>
+            <li><a href="<%= export_conversation_path(@conversation, f: :pdf) %>" class="block px-3 py-2 hover:bg-slate-50">PDF</a></li>
+          </ul>
+        </details>
+
+        <form id="share-form" action="<%= share_conversation_path(@conversation) %>" method="post" data-turbo="false">
+          <%= hidden_field_tag :authenticity_token, form_authenticity_token %>
+          <button type="submit" class="btn-secondary h-8 px-3 text-xs">共有リンク</button>
+        </form>
+
+        <form action="<%= archive_conversation_path(@conversation) %>" method="post" data-turbo="false">
+          <%= hidden_field_tag :authenticity_token, form_authenticity_token %>
+          <button type="submit" class="btn-secondary h-8 px-3 text-xs">アーカイブ</button>
+        </form>
+
+        <form id="stop-form" action="/messages/stop" method="post" class="flex items-center">
+          <%= hidden_field_tag :authenticity_token, form_authenticity_token %>
+          <input type="hidden" id="conversation_id" name="conversation_id" value="<%= @conversation.id %>">
+          <button type="submit" id="stop" class="btn-primary h-9 px-4" disabled>停止</button>
+        </form>
+      </div>
     </header>
 
     <!-- メッセージログ -->
@@ -290,5 +312,34 @@
   document.getElementById("edit-last").addEventListener("click", () => {
     const lastUser = [...document.querySelectorAll(".role-user + .bubble-right")].pop()
     if (lastUser) { area.value = lastUser.textContent.trim(); area.focus() }
+  })
+
+  // Chapter 10: 共有リンク処理
+  document.getElementById("share-form").addEventListener("submit", async (e) => {
+    e.preventDefault()
+    const form = e.target
+
+    try {
+      const token = form.querySelector('input[name="authenticity_token"]').value
+      const res = await fetch(form.action, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' }
+      })
+
+      if (!res.ok) throw new Error("共有リンク作成に失敗しました")
+      const json = await res.json()
+      console.log(json)
+
+      // クリップボードにコピー
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(json.url)
+      }
+
+      alert(`共有リンクをコピーしました\n有効期限: ${json.expires_at}\n${json.url}`)
+    } catch (e) {
+      console.error(e)
+      alert("共有リンク作成に失敗しました")
+    }
+    return false
   })
 </script>

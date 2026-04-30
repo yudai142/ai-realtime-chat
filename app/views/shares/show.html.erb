@@ -1,0 +1,72 @@
+<div class="h-dvh flex flex-col bg-gray-50">
+  <header class="h-14 flex items-center px-6 border-b border-slate-200 bg-white/70 backdrop-blur">
+    <h1 class="text-lg font-semibold text-slate-800">
+      <%= @conversation.title.presence || "Conversation ##{@conversation.id}" %>
+    </h1>
+    <p class="ml-4 text-sm text-slate-500">Read-only shared view</p>
+  </header>
+
+  <main class="flex-1 overflow-y-auto p-6">
+    <div id="log" class="card p-4 flex flex-col gap-4 md:gap-6">
+      <% @conversation.messages.order(:created_at).each do |m| %>
+        <div class="flex w-full <%= m.role == 'user' ? 'justify-end' : 'justify-start' %>">
+          <div>
+            <div class="<%= m.role == 'user' ? 'role-user' : 'role-assistant' %> mb-1">
+              <%= m.role.upcase %>
+            </div>
+            <div class="<%= m.role == 'user' ? 'bubble-right markdown-body' : 'bubble-left markdown-body' %>">
+              <%= h m.content %>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { marked } from "marked"
+  import DOMPurify from "dompurify"
+  import hljs from "highlight.js"
+
+  const log = document.getElementById("log")
+
+  // --- Markdown → HTML に変換して安全化 ---
+  function renderMarkdownSafe(text) {
+    const html = marked.parse(text || "")
+    return DOMPurify.sanitize(html, { USE_PROFILES: { html: true }})
+  }
+
+  // --- コードブロックにハイライトとコピー機能を追加 ---
+  function enhanceCodeBlocks(container) {
+    container.querySelectorAll('pre code').forEach((block) => {
+      hljs.highlightElement(block)
+      attachCopyButton(block)
+    })
+  }
+
+  function attachCopyButton(codeEl) {
+    const pre = codeEl.closest('pre')
+    if (!pre || pre.querySelector('.button-copy')) return
+    const btn = document.createElement('button')
+    btn.className = 'button-copy'
+    btn.type = 'button'
+    btn.textContent = 'Copy'
+    btn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(codeEl.innerText)
+      const old = btn.textContent; btn.textContent = 'Copied!'
+      setTimeout(() => btn.textContent = old, 800)
+    })
+    pre.appendChild(btn)
+  }
+
+  // --- 初期表示時に全メッセージをMarkdown化 ---
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll('#log .markdown-body').forEach((el) => {
+      const raw = el.textContent
+      el.innerHTML = renderMarkdownSafe(raw)
+      enhanceCodeBlocks(el)
+    })
+    log.scrollTop = log.scrollHeight
+  })
+</script>

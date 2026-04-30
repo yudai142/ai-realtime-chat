@@ -1,0 +1,24 @@
+<% content_for :title, h(@conversation.title.presence || '（無題）') %>
+
+<header style="margin-bottom:20px;">
+  <h1><%= h(@conversation.title.presence || '（無題）') %></h1>
+  <p class="meta">
+    <%= @conversation.created_at.strftime("%Y-%m-%d %H:%M") %> から
+    <%= @conversation.updated_at.strftime("%Y-%m-%d %H:%M") %> まで
+    ・ <%= pluralize(@conversation.messages.size, "message") %>
+  </p>
+</header>
+
+<article>
+  <% @conversation.messages.each do |m| %>
+    <section class="msg">
+      <div class="meta">
+        <span class="pill"><%= m.role.upcase %></span>
+        <span class="meta-inline"><%= m.created_at.strftime("%Y-%m-%d %H:%M") %></span>
+      </div>
+      <div class="markdown-body">
+        <%= md_to_html(m.content) %>
+      </div>
+    </section>
+  <% end %>
+</article>

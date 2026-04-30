@@ -1,8 +1,7 @@
-
 <div class="relative h-dvh overflow-hidden bg-gray-50">
   <header class="h-14 bg-white/80 backdrop-blur">
     <div class="w-full mx-auto max-w-7xl xl:max-w-[90rem] h-full px-4 py-3 md:px-6 lg:px-8 flex items-center justify-between">
-      <h1 class="text-lg font-semibold text-slate-800">Realtime AI Chat (Echo)</h1>
+      <h1 class="text-lg font-semibold text-slate-800">Realtime AI Chat (Streaming)</h1>
       <form id="stop-form" action="/messages/stop" method="post" class="h-full flex items-center">
         <input type="hidden" name="authenticity_token" value="<%= form_authenticity_token %>">
         <input type="hidden" id="conversation_id" name="conversation_id" value="global">
@@ -46,10 +45,14 @@
 
   const log = document.getElementById("log")
   const form = document.getElementById("form")
+  const stopForm = document.getElementById("stop-form")
   const area = document.getElementById("content")
-  const cid = document.getElementById("conversation_id").value
+  const stopBtn = document.getElementById("stop")
 
-  function append({ sender, content }) {
+  const cid = (document.querySelector('input[name="conversation_id"]').value) || "global"
+
+  // メッセージ1行（交互に左右）
+  function newRow(sender) {
     const row = document.createElement("div")
     row.className = "flex w-full " + (sender === "user" ? "justify-end" : "justify-start")
 
@@ -62,21 +65,57 @@
 
     const bubble = document.createElement("div")
     bubble.className = (sender === "user") ? "bubble-right" : "bubble-left"
-    bubble.textContent = content
 
     wrap.appendChild(role)
     wrap.appendChild(bubble)
     row.appendChild(wrap)
     log.appendChild(row)
     log.scrollTop = log.scrollHeight
+    return bubble
   }
 
-  subscribeChat(cid, append)
+  function lastAiBubble() {
+    const nodes = log.querySelectorAll('.role-assistant')
+    if (nodes.length === 0) return null
+    return nodes[nodes.length - 1].nextElementSibling
+  }
 
+  let assembling = ""
+  let generating = false
+
+  subscribeChat(cid, (payload) => {
+    if (payload.event === "start") {
+      generating = true
+      stopBtn.disabled = false
+      assembling = ""
+      newRow("assistant")
+      return
+    }
+    if (payload.event === "delta") {
+      assembling += payload.body || ""
+      const bubble = lastAiBubble() || newRow("assistant")
+      bubble.textContent = assembling
+      log.scrollTop = log.scrollHeight
+      return
+    }
+    if (payload.event === "done") {
+      generating = false
+      stopBtn.disabled = true
+      return
+    }
+    if (payload.event === "error") {
+      generating = false
+      stopBtn.disabled = true
+      const bubble = newRow("assistant")
+      bubble.textContent = `[error] ${payload.body}`
+      return
+    }
+  })
+
+  // IMEガード：変換確定で送信されないようにする
   let composing = false
-  area.addEventListener("compositionstart", () => { composing = true })
-  area.addEventListener("compositionend", () => { composing = false })
-
+  area.addEventListener("compositionstart", () => composing = true)
+  area.addEventListener("compositionend",   () => composing = false)
   area.addEventListener("keydown", (e) => {
     if (e.isComposing || composing) return
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
@@ -84,15 +123,27 @@
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault()
+    if (generating) return
     const fd = new FormData(form)
-    const btn = form.querySelector("button[type='submit']")
+    const btn = document.getElementById("send")
     const prev = btn.innerHTML
     btn.disabled = true; btn.innerHTML = "送信中..."
+    // 自分の発言を即時描画（交互の右寄せ）
+    const mine = newRow("user"); mine.textContent = (fd.get("message[content]") || "").toString()
     try {
       await fetch(form.action, { method: "POST", headers: { "Accept": "text/vnd.turbo-stream.html" }, body: fd })
       area.value = ""; area.focus()
     } finally {
       btn.disabled = false; btn.innerHTML = prev
     }
+  })
+
+  // 停止ボタン
+  stopForm.addEventListener("submit", async (e) => {
+    e.preventDefault()
+    if (!generating) return
+    const token = stopForm.querySelector('input[name="authenticity_token"]').value
+    const body = new URLSearchParams({ conversation_id: cid })
+    await fetch(stopForm.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": token }, body })
   })
 </script>

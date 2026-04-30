@@ -19,6 +19,11 @@ class Conversation < ApplicationRecord
     }
   end
 
+  # 直近 N 件（既定: 20）
+  def last_messages(limit = 20)
+    messages.order(created_at: :asc).last(limit)
+  end
+
   private
   def clamp_params
     self.temperature = [[temperature || 0.7, 0.0].max, 2.0].min

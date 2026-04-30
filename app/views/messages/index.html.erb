@@ -4,13 +4,14 @@
       <h1 class="text-lg font-semibold text-slate-800">Realtime AI Chat (Streaming)</h1>
       <form id="stop-form" action="/messages/stop" method="post" class="h-full flex items-center">
         <input type="hidden" name="authenticity_token" value="<%= form_authenticity_token %>">
-        <input type="hidden" id="conversation_id" name="conversation_id" value="global">
+        <input type="hidden" id="conversation_id" name="conversation_id" value="<%= @conversation.id %>">
         <button type="submit" id="stop" class="btn-primary h-9 px-4" disabled>停止</button>
       </form>
     </div>
   </header>
 
   <main class="mt-3 px-4 md:px-6 lg:px-8">
+    <h2><%= @conversation.title.presence || "Conversation" %></h2>
     <div class="w-full mx-auto max-w-7xl xl:max-w-[90rem]">
       <div id="log"
            class="card p-4 flex flex-col gap-3 md:gap-4 overflow-y-auto"

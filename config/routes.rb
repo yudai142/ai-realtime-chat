@@ -20,7 +20,10 @@ Rails.application.routes.draw do
   root "messages#index"
   resource :session, only: [:new, :create, :destroy]
   resources :messages, only: [:index, :create] do
-    collection { post :stop }
+    collection do
+      post :stop
+      post :regenerate
+    end
   end
   mount ActionCable.server => "/cable"
   resources :conversations, only: [:edit, :update, :show]

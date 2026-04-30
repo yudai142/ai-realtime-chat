@@ -15,7 +15,7 @@
     <div class="w-full mx-auto max-w-7xl xl:max-w-[90rem]">
       <div id="log"
            class="card p-4 flex flex-col gap-3 md:gap-4 overflow-y-auto"
-           style="height: calc(100dvh - 310px);">
+           style="height: calc(100dvh - 380px);">
       </div>
     </div>
   </main>
@@ -33,24 +33,104 @@
           style="height:auto;max-height:96px;overflow:auto"></textarea>
 
         <div class="mt-2 flex items-center justify-between">
-          <p class="text-xs text-slate-500">Enterで送信 / Shift+Enterで改行</p>
+          <div class="flex items-center gap-4">
+            <p class="text-xs text-slate-500">Enterで送信 / Shift+Enterで改行</p>
+            <span id="tok" class="text-xs text-slate-400"></span>
+          </div>
           <button type="submit" id="send" class="btn-primary h-10 px-5">送信</button>
+        </div>
+
+        <!-- Chapter 8: Regenerate & Edit buttons -->
+        <div class="mt-2 flex items-center gap-2">
+          <button type="button" id="regen" class="btn-secondary h-9 px-4">再生成</button>
+          <button type="button" id="edit-last" class="btn-secondary h-9 px-4">編集して再送</button>
         </div>
       </form>
     </div>
+
+    <!-- Chapter 8: Typing indicator -->
+    <p id="typing-indicator" class="text-xs text-slate-500 mt-2 hidden px-4 md:px-6 lg:px-8">
+      AIが入力中<span class="dotting"></span>
+    </p>
   </footer>
 </div>
 
 <script type="module">
   import { subscribeChat } from "channels/chat_channel"
+  import { marked } from "marked"
+  import DOMPurify from "dompurify"
+  import hljs from "highlight.js"
 
   const log = document.getElementById("log")
   const form = document.getElementById("form")
   const stopForm = document.getElementById("stop-form")
   const area = document.getElementById("content")
   const stopBtn = document.getElementById("stop")
+  const tokenCounter = document.getElementById("tok")
+  const typingEl = document.getElementById("typing-indicator")
+  const btnRegen = document.getElementById("regen")
+  const btnEditLast = document.getElementById("edit-last")
 
   const cid = (document.querySelector('input[name="conversation_id"]').value) || "global"
+
+  // ========================================
+  // Chapter 8-1: Markdown Rendering
+  // ========================================
+  function renderMarkdownSafe(text) {
+    const html = marked.parse(text || "")
+    return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } })
+  }
+
+  // ========================================
+  // Chapter 8-2: Code Highlight + Copy
+  // ========================================
+  function enhanceCodeBlocks(container) {
+    container.querySelectorAll('pre code').forEach((block) => {
+      hljs.highlightElement(block)
+      attachCopyButton(block)
+    })
+  }
+
+  function attachCopyButton(codeEl) {
+    const pre = codeEl.closest('pre')
+    if (!pre || pre.querySelector('.button-copy')) return
+    const btn = document.createElement('button')
+    btn.className = 'button-copy'
+    btn.type = 'button'
+    btn.textContent = 'Copy'
+    btn.addEventListener('click', async () => {
+      await navigator.clipboard.writeText(codeEl.innerText)
+      const old = btn.textContent
+      btn.textContent = 'Copied!'
+      setTimeout(() => btn.textContent = old, 800)
+    })
+    pre.appendChild(btn)
+  }
+
+  // ========================================
+  // Chapter 8-3: Streaming Optimization
+  // ========================================
+  function withProvisionalFences(text) {
+    const fenceCount = (text.match(/```/g) || []).length
+    return fenceCount % 2 === 1 ? text + "\n```" : text
+  }
+
+  function renderAssistantLive(el, assembling) {
+    const safeHTML = renderMarkdownSafe(withProvisionalFences(assembling))
+    el.innerHTML = safeHTML
+    enhanceCodeBlocks(el)
+  }
+
+  // ========================================
+  // Chapter 8-4: Token Counter
+  // ========================================
+  function estimateTokens(s) {
+    return Math.ceil((s || '').length / 3.5)
+  }
+
+  area.addEventListener('input', () => {
+    tokenCounter.textContent = `~${estimateTokens(area.value)} tok`
+  })
 
   // メッセージ1行（交互に左右）
   function newRow(sender) {
@@ -65,7 +145,7 @@
     role.textContent = (sender === "user") ? "YOU" : "ASSISTANT"
 
     const bubble = document.createElement("div")
-    bubble.className = (sender === "user") ? "bubble-right" : "bubble-left"
+    bubble.className = (sender === "user") ? "bubble-right markdown-body" : "bubble-left markdown-body"
 
     wrap.appendChild(role)
     wrap.appendChild(bubble)
@@ -83,33 +163,90 @@
 
   let assembling = ""
   let generating = false
+  let aiMsgEl
 
   subscribeChat(cid, (payload) => {
     if (payload.event === "start") {
       generating = true
       stopBtn.disabled = false
+      aiMsgEl = newRow("assistant")
+      typingEl.classList.remove("hidden")
       assembling = ""
-      newRow("assistant")
       return
     }
     if (payload.event === "delta") {
       assembling += payload.body || ""
-      const bubble = lastAiBubble() || newRow("assistant")
-      bubble.textContent = assembling
+      renderAssistantLive(aiMsgEl, assembling)
       log.scrollTop = log.scrollHeight
       return
     }
     if (payload.event === "done") {
       generating = false
       stopBtn.disabled = true
+      typingEl.classList.add("hidden")
+      renderAssistantLive(aiMsgEl, assembling)
       return
     }
     if (payload.event === "error") {
       generating = false
       stopBtn.disabled = true
-      const bubble = newRow("assistant")
-      bubble.textContent = `[error] ${payload.body}`
+      typingEl.classList.add("hidden")
+      appendErrorRetry(payload.body)
       return
+    }
+  })
+
+  // ========================================
+  // Chapter 8-6: Error Retry
+  // ========================================
+  function appendErrorRetry(reason) {
+    const row = document.createElement("div")
+    row.className = "flex w-full justify-start"
+
+    const wrap = document.createElement("div")
+    wrap.className = "bubble-left bg-red-50 text-red-700 p-2 rounded relative"
+
+    const msg = document.createElement("span")
+    msg.textContent = `[error] ${reason} `
+
+    const btn = document.createElement("button")
+    btn.type = "button"
+    btn.className = "btn-secondary h-7 px-2 ml-2 text-xs"
+    btn.textContent = "再試行"
+    btn.addEventListener("click", () => {
+      form.requestSubmit()
+      row.remove()
+    })
+
+    wrap.appendChild(msg)
+    wrap.appendChild(btn)
+    row.appendChild(wrap)
+    log.appendChild(row)
+    log.scrollTop = log.scrollHeight
+  }
+
+  // ========================================
+  // Chapter 8-5: Regenerate & Edit Last
+  // ========================================
+  btnRegen.addEventListener("click", async () => {
+    const token = form.querySelector('input[name="authenticity_token"]').value
+    const body = new URLSearchParams({ conversation_id: cid })
+    await fetch("/messages/regenerate", {
+      method: "POST",
+      headers: {
+        "X-CSRF-Token": token,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body
+    })
+  })
+
+  btnEditLast.addEventListener("click", () => {
+    const lastUserBubbles = [...document.querySelectorAll(".role-user + .bubble-right")]
+    if (lastUserBubbles.length > 0) {
+      const lastUser = lastUserBubbles[lastUserBubbles.length - 1]
+      area.value = lastUser.textContent.trim()
+      area.focus()
     }
   })
 
@@ -128,14 +265,21 @@
     const fd = new FormData(form)
     const btn = document.getElementById("send")
     const prev = btn.innerHTML
-    btn.disabled = true; btn.innerHTML = "送信中..."
-    // 自分の発言を即時描画（交互の右寄せ）
-    const mine = newRow("user"); mine.textContent = (fd.get("message[content]") || "").toString()
+    btn.disabled = true
+    btn.innerHTML = "送信中..."
+    // 自分の発言を即時描画（Markdown 対応）
+    const mine = newRow("user")
+    mine.innerHTML = renderMarkdownSafe((fd.get("message[content]") || "").toString())
     try {
       await fetch(form.action, { method: "POST", headers: { "Accept": "text/vnd.turbo-stream.html" }, body: fd })
-      area.value = ""; area.focus()
+      area.value = ""
+      area.focus()
+      tokenCounter.textContent = ""
+    } catch (err) {
+      appendErrorRetry("送信に失敗しました")
     } finally {
-      btn.disabled = false; btn.innerHTML = prev
+      btn.disabled = false
+      btn.innerHTML = prev
     }
   })
 

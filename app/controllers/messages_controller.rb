@@ -31,6 +31,28 @@ class MessagesController < ApplicationController
     head :ok
   end
 
+  # ========================================
+  # Chapter 8-5: Regenerate (resend last user message)
+  # ========================================
+  def regenerate
+    # Get the last user message
+    last_user = @conversation.messages.where(role: :user).order(created_at: :desc).first
+    return head :unprocessable_entity unless last_user
+
+    # Rebuild message context with the same user input
+    messages = Ai::ContextBuilder.new(@conversation, limit: 20).build_with(last_user.content)
+    stream_key = "chat_u#{current_user.id}_c#{@conversation.id}"
+    opts = @conversation.params_for_openai
+
+    # Call OpenAI API same as create action
+    result = Ai::StreamingChat.new(conversation_id: @conversation.id, stream_key: stream_key)
+                              .call!(messages, **opts)
+
+    # Save new assistant response
+    @conversation.messages.create!(role: :assistant, content: result.text, meta: { finish_reason: result.finish_reason })
+    head :ok
+  end
+
   private
   def set_conversation
     @conversation = current_user.conversations.first_or_create!(title: "Default Conversation")

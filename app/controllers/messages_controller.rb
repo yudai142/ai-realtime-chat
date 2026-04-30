@@ -12,6 +12,9 @@ class MessagesController < ApplicationController
     stream_key = "chat_#{@conversation.id}"
     opts = @conversation.params_for_openai
 
+    Rails.logger.info("Messages to OpenAI: #{messages.inspect}")
+    Rails.logger.info("OpenAI params: #{opts.inspect}")
+
     result = Ai::StreamingChat.new(conversation_id: @conversation.id, stream_key: stream_key)
                               .call!(messages, **opts)
 

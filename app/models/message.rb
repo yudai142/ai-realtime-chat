@@ -12,6 +12,15 @@ class Message < ApplicationRecord
 
   # OpenAI API 用に role を文字列キーで返す
   def role_for_api
-    self.class.roles.key(self.role)
+    case role
+    when 0, "0", :user, "user"
+      "user"
+    when 1, "1", :assistant, "assistant"
+      "assistant"
+    when 2, "2", :system, "system"
+      "system"
+    else
+      "user"  # fallback
+    end
   end
 end

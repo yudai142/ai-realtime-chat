@@ -1,5 +1,6 @@
-class Ai::StreamingChat
-  Result = Struct.new(:text, :finish_reason, keyword_init: true)
+module Ai
+  class StreamingChat
+    Result = Struct.new(:text, :finish_reason, keyword_init: true)
 
   def initialize(conversation_id:, stream_key: nil)
     @conversation_id = conversation_id.presence || "global"
@@ -38,7 +39,12 @@ class Ai::StreamingChat
     broadcast(event: "done", body: "", meta: { finish_reason: finish_reason })
     Result.new(text: buffer, finish_reason: finish_reason)
   rescue => e
-    broadcast(event: "error", body: e.message)
+    error_msg = e.message
+    if e.respond_to?(:response)
+      error_msg = "OpenAI API Error: #{e.response.dig(:error, :message) || e.response.inspect}"
+    end
+    Rails.logger.error("StreamingChat Error: #{error_msg}")
+    broadcast(event: "error", body: error_msg)
     raise
   ensure
     clear_stop!
@@ -62,6 +68,7 @@ class Ai::StreamingChat
   end
 
   def broadcast(payload)
-    ActionCable.server.broadcast(@stream_key, payload)
+      ActionCable.server.broadcast(@stream_key, payload)
+    end
   end
 end

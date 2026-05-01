@@ -83,7 +83,7 @@
 
     <!-- 入力フォーム -->
     <footer class="bg-gray-50 backdrop-blur px-6 py-4 border-t border-slate-200">
-      <form id="form" action="/messages" method="post" class="w-full card p-4">
+      <form id="form" action="/messages" method="post" class="w-full card p-4" enctype="multipart/form-data" data-turbo="false">
         <%= hidden_field_tag :authenticity_token, form_authenticity_token, id: "message_authenticity_token" %>
         <input type="hidden" id="conversation_id" name="conversation_id" value="<%= @conversation.id %>">
 
@@ -93,23 +93,29 @@
           placeholder="Shift+Enterで改行 / Enterで送信"
           style="height:auto;max-height:96px;overflow:auto"></textarea>
 
-        <div class="mt-2 flex items-center justify-between gap-2">
+        <div class="mt-2 flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <p class="text-xs text-slate-500">Enterで送信 / Shift+Enterで改行</p>
+            <span id="tok" class="text-xs text-slate-400"></span>
+          </div>
+          <button type="button" id="send" class="btn-primary h-10 px-5" onclick="window.handleSendClick(event)">送信</button>
+        </div>
+
+        <div class="mt-2 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <button type="button" id="regen" class="btn-secondary h-9 px-4">再生成</button>
+            <button type="button" id="edit-last" class="btn-secondary h-9 px-4">編集して再送</button>
+          </div>
           <div class="flex items-center gap-2">
             <!-- ファイル添付 -->
             <label for="message_files"
-                   class="btn-secondary h-9 px-4 flex items-center cursor-pointer">📎 ファイル</label>
+                   class="btn-secondary h-9 px-3 flex items-center cursor-pointer">
+              📎 添付
+            </label>
             <input type="file" id="message_files" name="message[files][]"
-                   multiple accept="application/pdf,image/*,.txt" class="hidden">
-            <span id="file-count" class="text-xs text-slate-500 font-medium"></span>
-            <p class="text-xs text-slate-500">Enterで送信</p>
-            <span id="tok" class="text-xs text-slate-400"></span>
+                   multiple accept="application/pdf,image/*" class="hidden">
+            <span id="file-count" class="text-xs text-slate-500"></span>
           </div>
-          <button type="submit" id="send" class="btn-primary h-10 px-5 flex-shrink-0">送信</button>
-        </div>
-
-        <div class="mt-2 flex items-center gap-2">
-          <button type="button" id="regen" class="btn-secondary h-9 px-4">再生成</button>
-          <button type="button" id="edit-last" class="btn-secondary h-9 px-4">編集して再送</button>
         </div>
 
         <p id="typing-indicator" class="text-xs text-slate-500 mt-2 hidden">
@@ -120,117 +126,134 @@
   </main>
 </div>
 
-<script type="module">
-  import { subscribeChat } from "channels/chat_channel"
-  import { marked } from "marked"
-  import DOMPurify from "dompurify"
-  import hljs from "highlight.js"
-
-  const log  = document.getElementById("log")
-  const form = document.getElementById("form")
-  const stopForm = document.getElementById("stop-form")
-  const area = document.getElementById("content")
-  const stopBtn = document.getElementById("stop")
-  const typingEl = document.getElementById("typing-indicator")
-  const cid = document.getElementById("conversation_id").value
-
-  // 初期スクロール
-  document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll('#log .markdown-body').forEach((el) => {
-      const raw = el.textContent
-      el.innerHTML = renderMarkdownSafe(raw)
-      enhanceCodeBlocks(el)
-    })
-    log.scrollTop = log.scrollHeight
-  })
-
-  function newRow(sender) {
-    const row = document.createElement("div")
-    row.className = "flex w-full " + (sender === "user" ? "justify-end" : "justify-start")
-    const wrap = document.createElement("div")
-    wrap.className = "flex flex-col"
-    const role = document.createElement("div")
-    role.className = (sender === "user") ? "role-user mb-1" : "role-assistant mb-1"
-    role.textContent = (sender === "user") ? "YOU" : "ASSISTANT"
-    const bubble = document.createElement("div")
-    bubble.className = (sender === "user") ? "bubble-right markdown-body" : "bubble-left markdown-body"
-    wrap.appendChild(role)
-    wrap.appendChild(bubble)
-    row.appendChild(wrap)
-    log.appendChild(row)
-    log.scrollTop = log.scrollHeight
-    return bubble
+<!-- グローバルハンドラー -->
+<script>
+  window.__appState = {
+    initialized: false,
+    subscriptionConnected: false,
+    errors: []
   }
-
-  function renderMarkdownSafe(text) {
-    const html = marked.parse(text || "")
-    const safe = DOMPurify.sanitize(html, { USE_PROFILES: { html: true }})
-    const tmp = document.createElement("div")
-    tmp.innerHTML = safe
-    return tmp.innerHTML
-  }
-
-  function enhanceCodeBlocks(container) {
-    container.querySelectorAll('pre code').forEach((block) => {
-      hljs.highlightElement(block)
-      attachCopyButton(block)
-    })
-  }
-
-  function attachCopyButton(codeEl) {
-    const pre = codeEl.closest('pre')
-    if (!pre || pre.querySelector('.button-copy')) return
-    const btn = document.createElement('button')
-    btn.className = 'button-copy'
-    btn.type = 'button'
-    btn.textContent = 'Copy'
-    btn.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(codeEl.innerText)
-      const old = btn.textContent; btn.textContent = 'Copied!'
-      setTimeout(() => btn.textContent = old, 800)
-    })
-    pre.appendChild(btn)
-  }
-
-  function withProvisionalFences(text) {
-    const fenceCount = (text.match(/```/g) || []).length
-    return fenceCount % 2 === 1 ? text + "\n```" : text
-  }
-
-  function renderAssistantLive(el, assembling) {
-    const safeHTML = renderMarkdownSafe(withProvisionalFences(assembling))
-    el.innerHTML = safeHTML
-    enhanceCodeBlocks(el)
-  }
-
-  function appendErrorRetry(reason) {
-    const row = document.createElement("div")
-    row.className = "flex w-full justify-start"
-    const wrap = document.createElement("div")
-    wrap.className = "bubble-left bg-red-50 text-red-700 p-2 rounded relative"
-    const msg = document.createElement("span")
-    msg.textContent = `[error] ${reason} `
-    const btn = document.createElement("button")
-    btn.type = "button"
-    btn.className = "btn-secondary h-7 px-2 ml-2"
-    btn.textContent = "再試行"
-    btn.addEventListener("click", () => {
-      form.requestSubmit()
-      row.remove()
-    })
-    wrap.appendChild(msg)
-    wrap.appendChild(btn)
-    row.appendChild(wrap)
-    log.appendChild(row)
-    log.scrollTop = log.scrollHeight
-  }
-
+  
   let generating = false
-  let assembling = ""
-  let aiMsgEl
-
-  subscribeChat(cid, (payload) => {
+  let form, area, log, stopBtn, typingEl, cid
+  let aiMsgEl, assembling = ""
+  
+  // DOM 要素の初期化
+  function initializeDOM() {
+    form = document.getElementById("form")
+    area = document.getElementById("content")
+    log = document.getElementById("log")
+    stopBtn = document.getElementById("stop")
+    typingEl = document.getElementById("typing-indicator")
+    cid = document.getElementById("conversation_id")?.value
+    
+    console.log("[Global] DOM initialized, cid:", cid)
+    return form && area && log && stopBtn && typingEl
+  }
+  
+  // Form submission handler
+  function initFormHandler() {
+    if (!form) {
+      console.error("[Global] Form not found!")
+      return false
+    }
+    
+    console.log("[Global] Adding form submit listener")
+    
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault()
+      console.log("[formSubmitHandler] Submit event fired!")
+      
+      if (generating) {
+        console.log("[formSubmitHandler] Skipping: still generating")
+        return
+      }
+      
+      const fd = new FormData(form)
+      const btn = document.getElementById("send")
+      const prev = btn.innerHTML
+      btn.disabled = true
+      btn.innerHTML = "送信中..."
+      
+      // Get user message content
+      const userContent = fd.get("message[content]") || ""
+      
+      // Display user message immediately
+      if (userContent && window.newRow && window.renderMarkdownSafe) {
+        const mine = window.newRow("user")
+        if (mine) {
+          mine.innerHTML = window.renderMarkdownSafe(userContent.toString())
+        }
+      } else if (userContent) {
+        // Fallback: simple text display if functions not ready
+        const mine = document.createElement("div")
+        mine.className = "flex w-full justify-end"
+        const wrap = document.createElement("div")
+        wrap.className = "flex flex-col"
+        const role = document.createElement("div")
+        role.className = "role-user mb-1"
+        role.textContent = "YOU"
+        const bubble = document.createElement("div")
+        bubble.className = "bubble-right markdown-body"
+        bubble.textContent = userContent
+        wrap.appendChild(role)
+        wrap.appendChild(bubble)
+        mine.appendChild(wrap)
+        log.appendChild(mine)
+        log.scrollTop = log.scrollHeight
+      }
+      
+      try {
+        const token = document.getElementById("message_authenticity_token")?.value
+        console.log("[formSubmitHandler] Sending to", form.action)
+        
+        const res = await fetch(form.action, {
+          method: "POST",
+          headers: {
+            "X-CSRF-Token": token
+          },
+          body: fd
+        })
+        
+        console.log("[formSubmitHandler] Response status:", res.status)
+        
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`)
+        }
+        
+        console.log("[formSubmitHandler] Request successful")
+        area.value = ""
+        area.focus()
+        if (document.getElementById("message_files")) {
+          document.getElementById("message_files").value = ""
+        }
+      } catch (err) {
+        console.error("[formSubmitHandler] Error:", err.message)
+      } finally {
+        btn.disabled = false
+        btn.innerHTML = prev
+      }
+    })
+    
+    return true
+  }
+  
+  // ActionCable subscription handler
+  function initActionCable() {
+    console.log("[ActionCable] Initializing ActionCable...")
+    console.log("[ActionCable] typeof ActionCable:", typeof ActionCable)
+    
+    // ActionCable will be set up by the module script
+    // Just log that we're ready
+    window.__appState.actionCableReady = true
+  }
+  
+  // Handle incoming ActionCable messages
+  function handleActionCableMessage(payload) {
+    console.log("[Message] Processing event:", payload.event)
+    
     if (payload.event === "start") {
+      console.log("[Message] START - initializing AI response")
       generating = true
       stopBtn.disabled = false
       aiMsgEl = newRow("assistant")
@@ -238,125 +261,361 @@
       typingEl.classList.remove("hidden")
       return
     }
+    
     if (payload.event === "delta") {
+      console.log("[Message] DELTA - received text chunk")
       assembling += payload.body || ""
       renderAssistantLive(aiMsgEl, assembling)
       log.scrollTop = log.scrollHeight
       return
     }
+    
     if (payload.event === "done") {
+      console.log("[Message] DONE - AI response complete")
       generating = false
       stopBtn.disabled = true
       renderAssistantLive(aiMsgEl, assembling)
       typingEl.classList.add("hidden")
       return
     }
+    
     if (payload.event === "error") {
+      console.log("[Message] ERROR -", payload.body)
       generating = false
       stopBtn.disabled = true
       appendErrorRetry(payload.body)
       typingEl.classList.add("hidden")
       return
     }
+  }
+  
+  window.handleSendClick = (event) => {
+    event.preventDefault()
+    console.log("[handleSendClick] button clicked")
+    
+    if (form) {
+      console.log("[handleSendClick] dispatching submit event")
+      const submitEvent = new Event("submit", { bubbles: true, cancelable: true })
+      form.dispatchEvent(submitEvent)
+    }
+  }
+  
+  // Initialize on DOM ready
+  document.addEventListener("DOMContentLoaded", () => {
+    console.log("[Global] DOMContentLoaded event")
+    if (initializeDOM()) {
+      initFormHandler()
+      initActionCable()
+      window.__appState.initialized = true
+    }
   })
+  
+  // If already loaded
+  if (document.readyState !== "loading") {
+    console.log("[Global] Document already loaded, initializing immediately")
+    if (initializeDOM()) {
+      initFormHandler()
+      // ActionCable init needs to wait a bit for consumer to be available
+      setTimeout(initActionCable, 500)
+      window.__appState.initialized = true
+    }
+  }
 
   // IMEガード
   let composing = false
   area.addEventListener("compositionstart", () => composing = true)
-  area.addEventListener("compositionend",   () => composing = false)
+  area.addEventListener("compositionend", () => composing = false)
   area.addEventListener("keydown", (e) => {
     if (e.isComposing || composing) return
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
-  })
-
-  // 送信処理
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault()
-    if (generating) return
-    const fd = new FormData(form)
-    const btn = document.getElementById("send")
-    const prev = btn.innerHTML
-    btn.disabled = true; btn.innerHTML = "送信中..."
-    const mine = newRow("user")
-    mine.innerHTML = renderMarkdownSafe((fd.get("message[content]") || "").toString())
-    try {
-      await fetch(form.action, { method: "POST", headers: { "Accept": "text/vnd.turbo-stream.html" }, body: fd })
-      area.value = ""; area.focus()
-    } catch {
-      appendErrorRetry("送信に失敗しました")
-    } finally {
-      btn.disabled = false; btn.innerHTML = prev
+    if (e.key === "Enter" && !e.shiftKey) { 
+      e.preventDefault()
+      form.requestSubmit()
     }
   })
 
+  // ファイル選択表示更新
+  function updateFileCount() {
+    const fileInput = document.getElementById("message_files")
+    const fileCount = document.getElementById("file-count")
+    const count = fileInput.files.length
+    if (count > 0) {
+      fileCount.textContent = `${count}個のファイル`
+    } else {
+      fileCount.textContent = ""
+    }
+  }
+
+  document.getElementById("message_files").addEventListener("change", updateFileCount)
+
   // 停止処理
-  stopForm.addEventListener("submit", async (e) => {
-    e.preventDefault()
-    if (!generating) return
-    const token = stopForm.querySelector('input[name="authenticity_token"]').value
-    const body = new URLSearchParams({ conversation_id: cid })
-    await fetch(stopForm.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": token }, body })
-  })
-
-  // File Attachment Handler
-  const fileInput = document.getElementById("message_files")
-  const fileCount = document.getElementById("file-count")
-
-  if (fileInput && fileCount) {
-    fileInput.addEventListener("change", () => {
-      const count = fileInput.files.length
-      fileCount.textContent = count > 0 ? `${count} files` : ""
+  const stopForm = document.getElementById("stop-form")
+  if (stopForm) {
+    stopForm.addEventListener("submit", async (e) => {
+      e.preventDefault()
+      if (!generating) return
+      const token = stopForm.querySelector('input[name="authenticity_token"]').value
+      const body = new URLSearchParams({ conversation_id: cid })
+      await fetch(stopForm.action, { 
+        method: "POST", 
+        headers: { 
+          "Content-Type": "application/x-www-form-urlencoded", 
+          "X-CSRF-Token": token 
+        }, 
+        body 
+      })
     })
   }
 
   // トークンカウンタ
-  function estimateTokens(s) { return Math.ceil((s || '').length / 3.5) }
+  function estimateTokens(s) { 
+    return Math.ceil((s || '').length / 3.5) 
+  }
   const tokenCounter = document.getElementById("tok")
-  area.addEventListener('input', () => { tokenCounter.textContent = `~${estimateTokens(area.value)} tok` })
+  if (tokenCounter && area) {
+    area.addEventListener('input', () => { 
+      tokenCounter.textContent = `~${estimateTokens(area.value)} tok` 
+    })
+  }
 
   // 再生成 / 編集して再送
-  document.getElementById("regen").addEventListener("click", async () => {
-    await fetch("/messages/regenerate", {
-      method: "POST",
-      headers: {
-        "X-CSRF-Token": document.getElementById("message_authenticity_token").value,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ conversation_id: cid })
-    })
-  })
-
-  document.getElementById("edit-last").addEventListener("click", () => {
-    const lastUser = [...document.querySelectorAll(".role-user + .bubble-right")].pop()
-    if (lastUser) { area.value = lastUser.textContent.trim(); area.focus() }
-  })
-
-  // Chapter 10: 共有リンク処理
-  document.getElementById("share-form").addEventListener("submit", async (e) => {
-    e.preventDefault()
-    const form = e.target
-
-    try {
-      const token = form.querySelector('input[name="authenticity_token"]').value
-      const res = await fetch(form.action, {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' }
+  const regenBtn = document.getElementById("regen")
+  if (regenBtn) {
+    regenBtn.addEventListener("click", async () => {
+      await fetch("/messages/regenerate", {
+        method: "POST",
+        headers: {
+          "X-CSRF-Token": document.getElementById("message_authenticity_token").value,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ conversation_id: cid })
       })
+    })
+  }
 
-      if (!res.ok) throw new Error("共有リンク作成に失敗しました")
-      const json = await res.json()
-      console.log(json)
-
-      // クリップボードにコピー
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(json.url)
+  const editLastBtn = document.getElementById("edit-last")
+  if (editLastBtn) {
+    editLastBtn.addEventListener("click", () => {
+      const lastUser = [...document.querySelectorAll(".role-user + .bubble-right")].pop()
+      if (lastUser) { 
+        area.value = lastUser.textContent.trim()
+        area.focus() 
       }
+    })
+  }
 
-      alert(`共有リンクをコピーしました\n有効期限: ${json.expires_at}\n${json.url}`)
-    } catch (e) {
-      console.error(e)
-      alert("共有リンク作成に失敗しました")
-    }
-    return false
-  })
+  // 共有リンク処理
+  const shareForm = document.getElementById("share-form")
+  if (shareForm) {
+    shareForm.addEventListener("submit", async (e) => {
+      e.preventDefault()
+      const form = e.target
+
+      try {
+        const token = form.querySelector('input[name="authenticity_token"]').value
+        const res = await fetch(form.action, {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' }
+        })
+
+        if (!res.ok) throw new Error("共有リンク作成に失敗しました")
+        const json = await res.json()
+        console.log(json)
+
+        // クリップボードにコピー
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(json.url)
+        }
+
+        alert(`共有リンクをコピーしました\n有効期限: ${json.expires_at}\n${json.url}`)
+      } catch (e) {
+        console.error(e)
+        alert("共有リンク作成に失敗しました")
+      }
+    })
+  }
 </script>
+
+<script type="module">
+  console.log("[Module] Module script starting, attempting imports...")
+  
+  try {
+    // Try dynamic imports with fallback
+    let marked, DOMPurify, hljs, createConsumer
+    
+    try {
+      marked = (await import("marked")).default || await import("marked")
+      console.log("[Module] marked imported successfully")
+    } catch (e) {
+      console.warn("[Module] marked import failed, will use marked from window:", e.message)
+      marked = window.marked
+    }
+    
+    try {
+      DOMPurify = (await import("dompurify")).default
+      console.log("[Module] DOMPurify imported successfully")
+    } catch (e) {
+      console.warn("[Module] DOMPurify import failed:", e.message)
+      DOMPurify = window.DOMPurify
+    }
+    
+    try {
+      hljs = (await import("highlight.js")).default
+      console.log("[Module] highlight.js imported successfully")
+    } catch (e) {
+      console.warn("[Module] highlight.js import failed, creating no-op version:", e.message)
+      hljs = { highlightElement: () => {} }
+    }
+    
+    try {
+      createConsumer = (await import("@rails/actioncable")).createConsumer
+      console.log("[Module] createConsumer imported successfully")
+    } catch (e) {
+      console.error("[Module] createConsumer import CRITICAL FAILED:", e.message)
+      throw e
+    }
+    
+    // Save to window for debugging
+    window.__moduleLoaded = { marked, DOMPurify, hljs, createConsumer }
+
+    // Make functions globally available for markdown rendering
+    window.renderMarkdownSafe = function(text) {
+      if (!marked) return text
+      try {
+        const html = marked.parse(text || "")
+        const safe = DOMPurify ? DOMPurify.sanitize(html, { USE_PROFILES: { html: true }}) : html
+        const tmp = document.createElement("div")
+        tmp.innerHTML = safe
+        return tmp.innerHTML
+      } catch (e) {
+        console.warn("[renderMarkdownSafe] Rendering failed:", e)
+        return text
+      }
+    }
+
+    window.enhanceCodeBlocks = function(container) {
+      if (!container || !hljs) return
+      try {
+        container.querySelectorAll('pre code').forEach((block) => {
+          hljs.highlightElement(block)
+          window.attachCopyButton(block)
+        })
+      } catch (e) {
+        console.warn("[enhanceCodeBlocks] Enhancement failed:", e)
+      }
+    }
+
+    window.attachCopyButton = function(codeEl) {
+      const pre = codeEl.closest('pre')
+      if (!pre || pre.querySelector('.button-copy')) return
+      const btn = document.createElement('button')
+      btn.className = 'button-copy'
+      btn.type = 'button'
+      btn.textContent = 'Copy'
+      btn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(codeEl.innerText)
+        const old = btn.textContent; btn.textContent = 'Copied!'
+        setTimeout(() => btn.textContent = old, 800)
+      })
+      pre.appendChild(btn)
+    }
+
+    window.withProvisionalFences = function(text) {
+      const fenceCount = (text.match(/```/g) || []).length
+      return fenceCount % 2 === 1 ? text + "\n```" : text
+    }
+
+    window.renderAssistantLive = function(el, assembling) {
+      if (!el) return
+      const safeHTML = window.renderMarkdownSafe(window.withProvisionalFences(assembling))
+      el.innerHTML = safeHTML
+      window.enhanceCodeBlocks(el)
+    }
+
+    window.appendErrorRetry = function(reason) {
+      const log = document.getElementById("log")
+      if (!log) return
+      
+      const row = document.createElement("div")
+      row.className = "flex w-full justify-start"
+      const wrap = document.createElement("div")
+      wrap.className = "bubble-left bg-red-50 text-red-700 p-2 rounded relative"
+      const msg = document.createElement("span")
+      msg.textContent = `[error] ${reason} `
+      const btn = document.createElement("button")
+      btn.type = "button"
+      btn.className = "btn-secondary h-7 px-2 ml-2"
+      btn.textContent = "再試行"
+      btn.addEventListener("click", () => {
+        const form = document.getElementById("form")
+        if (form) form.requestSubmit()
+        row.remove()
+      })
+      wrap.appendChild(msg)
+      wrap.appendChild(btn)
+      row.appendChild(wrap)
+      log.appendChild(row)
+      log.scrollTop = log.scrollHeight
+    }
+
+    window.newRow = function(sender) {
+      const log = document.getElementById("log")
+      if (!log) return null
+      
+      const row = document.createElement("div")
+      row.className = "flex w-full " + (sender === "user" ? "justify-end" : "justify-start")
+      const wrap = document.createElement("div")
+      wrap.className = "flex flex-col"
+      const role = document.createElement("div")
+      role.className = (sender === "user") ? "role-user mb-1" : "role-assistant mb-1"
+      role.textContent = (sender === "user") ? "YOU" : "ASSISTANT"
+      const bubble = document.createElement("div")
+      bubble.className = (sender === "user") ? "bubble-right markdown-body" : "bubble-left markdown-body"
+      wrap.appendChild(role)
+      wrap.appendChild(bubble)
+      row.appendChild(wrap)
+      log.appendChild(row)
+      log.scrollTop = log.scrollHeight
+      return bubble
+    }
+
+    console.log("[Module] Helper functions exported to window")
+
+    // Setup ActionCable subscription
+    console.log("[Module] Setting up ActionCable...")
+    const consumer = createConsumer()
+    console.log("[Module] Consumer created:", consumer)
+    
+    const conversationId = document.getElementById("conversation_id")?.value
+    console.log("[Module] Conversation ID:", conversationId)
+    
+    const subscription = consumer.subscriptions.create(
+      { channel: "ChatChannel", conversation_id: conversationId || "global" },
+      {
+        connected() {
+          console.log("[ActionCable] Connected to ChatChannel")
+          window.__appState.subscriptionConnected = true
+        },
+        
+        disconnected() {
+          console.log("[ActionCable] Disconnected from ChatChannel")
+          window.__appState.subscriptionConnected = false
+        },
+        
+        received(data) {
+          console.log("[ActionCable] Received:", data.event)
+          window.handleActionCableMessage(data)
+        }
+      }
+    )
+    
+    console.log("[Module] ActionCable subscription created")
+    window.__appState.actionCableReady = true
+    window.__subscription = subscription
+    
+  } catch (err) {
+    console.error("[Module] Setup failed:", err.message, err.stack)
+    window.__appState.errors.push(err.message)
+    window.__moduleError = err.message
+  }
+</script>
+

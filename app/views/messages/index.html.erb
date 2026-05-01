@@ -33,14 +33,14 @@
           style="height:auto;max-height:96px;overflow:auto"></textarea>
 
         <div class="mt-2 flex items-center justify-between gap-2">
-          <!-- File input (hidden) -->
-          <input type="file" id="file-input" name="message[files][]" multiple
-            accept="application/pdf,image/*,.txt"
-            class="hidden">
-
           <!-- Left side: File button, count, helper text, token counter -->
           <div class="flex items-center gap-2">
-            <button type="button" id="file-btn" class="btn-secondary h-9 px-4">📎 ファイル</button>
+            <!-- ファイル添付 -->
+            <label for="message_files"
+                   class="btn-secondary h-9 px-4 flex items-center cursor-pointer">📎 ファイル</label>
+            <input type="file" id="message_files" name="message[files][]" multiple
+              accept="application/pdf,image/*,.txt"
+              class="hidden">
             <span id="file-count" class="text-xs text-slate-500 font-medium"></span>
             <p class="text-xs text-slate-500">Enterで送信</p>
             <span id="tok" class="text-xs text-slate-400"></span>
@@ -528,12 +528,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   })
 
   // File Attachment Handler
-  const fileInput = document.getElementById("file-input")
-  const fileBtn = document.getElementById("file-btn")
+  const fileInput = document.getElementById("message_files")
   const fileCount = document.getElementById("file-count")
 
-  if (fileBtn && fileInput) {
-    fileBtn.addEventListener("click", () => fileInput.click())
+  if (fileInput && fileCount) {
     fileInput.addEventListener("change", () => {
       const count = fileInput.files.length
       fileCount.textContent = count > 0 ? `${count} files` : ""

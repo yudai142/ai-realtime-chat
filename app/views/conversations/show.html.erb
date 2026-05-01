@@ -93,12 +93,19 @@
           placeholder="Shift+Enterで改行 / Enterで送信"
           style="height:auto;max-height:96px;overflow:auto"></textarea>
 
-        <div class="mt-2 flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <p class="text-xs text-slate-500">Enterで送信 / Shift+Enterで改行</p>
+        <!-- File input (hidden) -->
+        <input type="file" id="file-input" name="message[files][]" multiple
+          accept="application/pdf,image/*,.txt"
+          class="hidden">
+
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <button type="button" id="file-btn" class="btn-secondary h-9 px-4">📎 ファイル</button>
+            <span id="file-count" class="text-xs text-slate-500 font-medium"></span>
+            <p class="text-xs text-slate-500">Enterで送信</p>
             <span id="tok" class="text-xs text-slate-400"></span>
           </div>
-          <button type="submit" id="send" class="btn-primary h-10 px-5">送信</button>
+          <button type="submit" id="send" class="btn-primary h-10 px-5 flex-shrink-0">送信</button>
         </div>
 
         <div class="mt-2 flex items-center gap-2">
@@ -291,6 +298,19 @@
     const body = new URLSearchParams({ conversation_id: cid })
     await fetch(stopForm.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": token }, body })
   })
+
+  // File Attachment Handler
+  const fileInput = document.getElementById("file-input")
+  const fileBtn = document.getElementById("file-btn")
+  const fileCount = document.getElementById("file-count")
+
+  if (fileBtn && fileInput) {
+    fileBtn.addEventListener("click", () => fileInput.click())
+    fileInput.addEventListener("change", () => {
+      const count = fileInput.files.length
+      fileCount.textContent = count > 0 ? `${count} files` : ""
+    })
+  }
 
   // トークンカウンタ
   function estimateTokens(s) { return Math.ceil((s || '').length / 3.5) }

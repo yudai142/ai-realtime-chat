@@ -68,3 +68,5 @@ gem "wicked_pdf"
 gem "wkhtmltopdf-binary"
 # Markdown rendering
 gem "commonmarker"
+# PDF text extraction
+gem "pdf-reader"

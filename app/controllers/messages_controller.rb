@@ -7,8 +7,10 @@ class MessagesController < ApplicationController
   end
 
   # Chapter 9-5: Create with conversation switching support
+  # Chapter 11: File attachment support
   def create
     content = params.require(:message)[:content]
+    files   = Array(params.dig(:message, :files))
 
     # アプリ内レート制限
     limiter = RateLimiter.new(namespace: "messages", limit: 20, period: 60)
@@ -20,19 +22,28 @@ class MessagesController < ApplicationController
     end
 
     # 1) 保存
-    @conversation.messages.create!(role: :user, content: content)
+    user_msg = @conversation.messages.create!(role: :user, content: content)
+    files.each { |f| user_msg.files.attach(f) }
 
     # 2) コンテキストと会話設定
-    messages = Ai::ContextBuilder.new(@conversation, limit: 20).build_with(content)
     stream_key = "chat_u#{current_user.id}_c#{@conversation.id}"
     opts = @conversation.params_for_openai
+    result = nil
 
-    Rails.logger.info("Messages to OpenAI: #{messages.inspect}")
+    Rails.logger.info("Messages to OpenAI: has #{files.size} files")
     Rails.logger.info("OpenAI params: #{opts.inspect}")
 
-    # 3) ストリーミング（ユーザー別ストリームキー）
-    result = Ai::StreamingChat.new(conversation_id: @conversation.id, stream_key: stream_key)
-                              .call!(messages, **opts)
+    # 3) ストリーミング（ファイル添付の有無で分岐）
+    if user_msg.files.attached?
+      # 添付あり: 抽出→要約
+      info = Attachments::Extractor.new(view_context).call(user_msg.files)
+      result = Ai::AttachmentSummarizer.new(conversation: @conversation, stream_key: stream_key).call!(info)
+    else
+      # 添付なし: 通常の会話応答
+      messages = Ai::ContextBuilder.new(@conversation, limit: 20).build_with(content)
+      result = Ai::StreamingChat.new(conversation_id: @conversation.id, stream_key: stream_key)
+                                .call!(messages, **opts)
+    end
 
     # 4) 応答を保存
     @conversation.update!(updated_at: Time.current)

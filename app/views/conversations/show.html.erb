@@ -175,6 +175,34 @@
       btn.disabled = true
       btn.innerHTML = "送信中..."
       
+      // Get user message content
+      const userContent = fd.get("message[content]") || ""
+      
+      // Display user message immediately
+      if (userContent && window.newRow && window.renderMarkdownSafe) {
+        const mine = window.newRow("user")
+        if (mine) {
+          mine.innerHTML = window.renderMarkdownSafe(userContent.toString())
+        }
+      } else if (userContent) {
+        // Fallback: simple text display if functions not ready
+        const mine = document.createElement("div")
+        mine.className = "flex w-full justify-end"
+        const wrap = document.createElement("div")
+        wrap.className = "flex flex-col"
+        const role = document.createElement("div")
+        role.className = "role-user mb-1"
+        role.textContent = "YOU"
+        const bubble = document.createElement("div")
+        bubble.className = "bubble-right markdown-body"
+        bubble.textContent = userContent
+        wrap.appendChild(role)
+        wrap.appendChild(bubble)
+        mine.appendChild(wrap)
+        log.appendChild(mine)
+        log.scrollTop = log.scrollHeight
+      }
+      
       try {
         const token = document.getElementById("message_authenticity_token")?.value
         console.log("[formSubmitHandler] Sending to", form.action)
@@ -291,6 +319,119 @@
       setTimeout(initActionCable, 500)
       window.__appState.initialized = true
     }
+  }
+
+  // IMEガード
+  let composing = false
+  area.addEventListener("compositionstart", () => composing = true)
+  area.addEventListener("compositionend", () => composing = false)
+  area.addEventListener("keydown", (e) => {
+    if (e.isComposing || composing) return
+    if (e.key === "Enter" && !e.shiftKey) { 
+      e.preventDefault()
+      form.requestSubmit()
+    }
+  })
+
+  // ファイル選択表示更新
+  function updateFileCount() {
+    const fileInput = document.getElementById("message_files")
+    const fileCount = document.getElementById("file-count")
+    const count = fileInput.files.length
+    if (count > 0) {
+      fileCount.textContent = `${count}個のファイル`
+    } else {
+      fileCount.textContent = ""
+    }
+  }
+
+  document.getElementById("message_files").addEventListener("change", updateFileCount)
+
+  // 停止処理
+  const stopForm = document.getElementById("stop-form")
+  if (stopForm) {
+    stopForm.addEventListener("submit", async (e) => {
+      e.preventDefault()
+      if (!generating) return
+      const token = stopForm.querySelector('input[name="authenticity_token"]').value
+      const body = new URLSearchParams({ conversation_id: cid })
+      await fetch(stopForm.action, { 
+        method: "POST", 
+        headers: { 
+          "Content-Type": "application/x-www-form-urlencoded", 
+          "X-CSRF-Token": token 
+        }, 
+        body 
+      })
+    })
+  }
+
+  // トークンカウンタ
+  function estimateTokens(s) { 
+    return Math.ceil((s || '').length / 3.5) 
+  }
+  const tokenCounter = document.getElementById("tok")
+  if (tokenCounter && area) {
+    area.addEventListener('input', () => { 
+      tokenCounter.textContent = `~${estimateTokens(area.value)} tok` 
+    })
+  }
+
+  // 再生成 / 編集して再送
+  const regenBtn = document.getElementById("regen")
+  if (regenBtn) {
+    regenBtn.addEventListener("click", async () => {
+      await fetch("/messages/regenerate", {
+        method: "POST",
+        headers: {
+          "X-CSRF-Token": document.getElementById("message_authenticity_token").value,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ conversation_id: cid })
+      })
+    })
+  }
+
+  const editLastBtn = document.getElementById("edit-last")
+  if (editLastBtn) {
+    editLastBtn.addEventListener("click", () => {
+      const lastUser = [...document.querySelectorAll(".role-user + .bubble-right")].pop()
+      if (lastUser) { 
+        area.value = lastUser.textContent.trim()
+        area.focus() 
+      }
+    })
+  }
+
+  // 共有リンク処理
+  const shareForm = document.getElementById("share-form")
+  if (shareForm) {
+    shareForm.addEventListener("submit", async (e) => {
+      e.preventDefault()
+      const form = e.target
+
+      try {
+        const token = form.querySelector('input[name="authenticity_token"]').value
+        const res = await fetch(form.action, {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' }
+        })
+
+        if (!res.ok) throw new Error("共有リンク作成に失敗しました")
+        const json = await res.json()
+        console.log(json)
+
+        // クリップボードにコピー
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(json.url)
+        }
+
+        alert(`共有リンクをコピーしました\n有効期限: ${json.expires_at}\n${json.url}`)
+      } catch (e) {
+        console.error(e)
+        alert("共有リンク作成に失敗しました")
+      }
+    })
   }
 </script>
 
@@ -478,136 +619,3 @@
   }
 </script>
 
-  // IMEガード
-  let composing = false
-  area.addEventListener("compositionstart", () => composing = true)
-  area.addEventListener("compositionend",   () => composing = false)
-  area.addEventListener("keydown", (e) => {
-    if (e.isComposing || composing) return
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
-  })
-
-  // 送信処理
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault()
-    if (generating) return
-    const fd = new FormData(form)
-    const btn = document.getElementById("send")
-    const prev = btn.innerHTML
-    btn.disabled = true; btn.innerHTML = "送信中..."
-    const mine = newRow("user")
-    const userContent = fd.get("message[content]") || ""
-    mine.innerHTML = renderMarkdownSafe(userContent.toString())
-    try {
-      const token = document.getElementById("message_authenticity_token")?.value
-      const res = await fetch(form.action, { 
-        method: "POST", 
-        headers: { 
-          "X-CSRF-Token": token
-        }, 
-        body: fd 
-      })
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
-      }
-      // 成功したらクリア
-      area.value = ""
-      area.focus()
-      document.getElementById("message_files").value = ""
-      updateFileCount()
-    } catch (err) {
-      console.error("Form submit error:", err)
-      appendErrorRetry(err.message || "送信に失敗しました")
-    } finally {
-      btn.disabled = false; btn.innerHTML = prev
-    }
-  })
-
-  // 送信ボタンクリックイベント
-  const sendBtn = document.getElementById("send")
-  if (sendBtn) {
-    console.log("Send button found, attaching listener")
-    sendBtn.addEventListener("click", (e) => {
-      console.log("Button clicked!")
-      e.preventDefault()
-      console.log("Calling form.requestSubmit()")
-      form.requestSubmit()
-    })
-  } else {
-    console.error("Send button NOT found!")
-  }
-
-  // ファイル選択表示更新
-  function updateFileCount() {
-    const fileInput = document.getElementById("message_files")
-    const fileCount = document.getElementById("file-count")
-    const count = fileInput.files.length
-    if (count > 0) {
-      fileCount.textContent = `${count}個のファイル`
-    } else {
-      fileCount.textContent = ""
-    }
-  }
-
-  document.getElementById("message_files").addEventListener("change", updateFileCount)
-
-  // 停止処理
-  stopForm.addEventListener("submit", async (e) => {
-    e.preventDefault()
-    if (!generating) return
-    const token = stopForm.querySelector('input[name="authenticity_token"]').value
-    const body = new URLSearchParams({ conversation_id: cid })
-    await fetch(stopForm.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": token }, body })
-  })
-
-  // トークンカウンタ
-  function estimateTokens(s) { return Math.ceil((s || '').length / 3.5) }
-  const tokenCounter = document.getElementById("tok")
-  area.addEventListener('input', () => { tokenCounter.textContent = `~${estimateTokens(area.value)} tok` })
-
-  // 再生成 / 編集して再送
-  document.getElementById("regen").addEventListener("click", async () => {
-    await fetch("/messages/regenerate", {
-      method: "POST",
-      headers: {
-        "X-CSRF-Token": document.getElementById("message_authenticity_token").value,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ conversation_id: cid })
-    })
-  })
-
-  document.getElementById("edit-last").addEventListener("click", () => {
-    const lastUser = [...document.querySelectorAll(".role-user + .bubble-right")].pop()
-    if (lastUser) { area.value = lastUser.textContent.trim(); area.focus() }
-  })
-
-  // Chapter 10: 共有リンク処理
-  document.getElementById("share-form").addEventListener("submit", async (e) => {
-    e.preventDefault()
-    const form = e.target
-
-    try {
-      const token = form.querySelector('input[name="authenticity_token"]').value
-      const res = await fetch(form.action, {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' }
-      })
-
-      if (!res.ok) throw new Error("共有リンク作成に失敗しました")
-      const json = await res.json()
-      console.log(json)
-
-      // クリップボードにコピー
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(json.url)
-      }
-
-      alert(`共有リンクをコピーしました\n有効期限: ${json.expires_at}\n${json.url}`)
-    } catch (e) {
-      console.error(e)
-      alert("共有リンク作成に失敗しました")
-    }
-    return false
-  })
-</script>

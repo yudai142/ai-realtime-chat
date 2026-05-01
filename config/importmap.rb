@@ -7,6 +7,7 @@ pin "@hotwired/stimulus-loading", to: "stimulus-loading.js"
 pin_all_from "app/javascript/controllers", under: "controllers"
 pin_all_from "app/javascript/channels", under: "channels"
 pin "@rails/actioncable", to: "actioncable.esm.js"
+pin_all_from "app/javascript"
 pin "dompurify" # @3.4.1
 pin "marked" # @18.0.2
 pin "highlight.js" # @11.11.1

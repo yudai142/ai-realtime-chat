@@ -32,21 +32,22 @@
           placeholder="Shift+Enterで改行 / Enterで送信"
           style="height:auto;max-height:96px;overflow:auto"></textarea>
 
-        <!-- Chapter 11: File attachment -->
-        <div class="mt-3 flex items-center gap-2">
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <!-- File input (hidden) -->
           <input type="file" id="file-input" name="message[files][]" multiple
             accept="application/pdf,image/*,.txt"
             class="hidden">
-          <button type="button" id="file-btn" class="btn-secondary h-9 px-4">📎 ファイル添付</button>
-          <span id="file-count" class="text-xs text-slate-500"></span>
-        </div>
 
-        <div class="mt-2 flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <p class="text-xs text-slate-500">Enterで送信 / Shift+Enterで改行</p>
+          <!-- Left side: File button, count, helper text, token counter -->
+          <div class="flex items-center gap-2">
+            <button type="button" id="file-btn" class="btn-secondary h-9 px-4">📎 ファイル</button>
+            <span id="file-count" class="text-xs text-slate-500 font-medium"></span>
+            <p class="text-xs text-slate-500">Enterで送信</p>
             <span id="tok" class="text-xs text-slate-400"></span>
           </div>
-          <button type="submit" id="send" class="btn-primary h-10 px-5">送信</button>
+
+          <!-- Right side: Send button -->
+          <button type="submit" id="send" class="btn-primary h-10 px-5 flex-shrink-0">送信</button>
         </div>
 
         <div class="mt-2 flex items-center gap-2">
@@ -269,12 +270,22 @@
           placeholder="Shift+Enterで改行 / Enterで送信"
           style="height:auto;max-height:96px;overflow:auto"></textarea>
 
-        <div class="mt-2 flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <p class="text-xs text-slate-500">Enterで送信 / Shift+Enterで改行</p>
+        <div class="mt-2 flex items-center justify-between gap-2">
+          <!-- File input (hidden) -->
+          <input type="file" id="file-input" name="message[files][]" multiple
+            accept="application/pdf,image/*,.txt"
+            class="hidden">
+
+          <!-- Left side: File button, count, helper text, token counter -->
+          <div class="flex items-center gap-2">
+            <button type="button" id="file-btn" class="btn-secondary h-9 px-4">📎 ファイル</button>
+            <span id="file-count" class="text-xs text-slate-500 font-medium"></span>
+            <p class="text-xs text-slate-500">Enterで送信</p>
             <span id="tok" class="text-xs text-slate-400"></span>
           </div>
-          <button type="submit" id="send" class="btn-primary h-10 px-5">送信</button>
+
+          <!-- Right side: Send button -->
+          <button type="submit" id="send" class="btn-primary h-10 px-5 flex-shrink-0">送信</button>
         </div>
 
         <!-- Chapter 8: Regenerate & Edit buttons -->
@@ -292,13 +303,25 @@
   </footer>
 </div>
 
-<script type="module">
-  import { subscribeChat } from "channels/chat_channel"
-  import { marked } from "marked"
-  import DOMPurify from "dompurify"
-  import hljs from "highlight.js"
-
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
   const log = document.getElementById("log")
+  if (!log) return
+
+  // Wait for libraries to be available
+  await new Promise(resolve => {
+    const checkLibs = setInterval(() => {
+      if (typeof window.marked !== 'undefined' && typeof window.DOMPurify !== 'undefined' && typeof window.hljs !== 'undefined') {
+        clearInterval(checkLibs)
+        resolve()
+      }
+    }, 50)
+  })
+
+  const { marked } = window
+  const DOMPurify = window.DOMPurify
+  const hljs = window.hljs
+
   const form = document.getElementById("form")
   const stopForm = document.getElementById("stop-form")
   const area = document.getElementById("content")
@@ -308,19 +331,13 @@
   const btnRegen = document.getElementById("regen")
   const btnEditLast = document.getElementById("edit-last")
 
-  const cid = (document.querySelector('input[name="conversation_id"]').value) || "global"
+  const cid = (document.querySelector('input[name="conversation_id"]')?.value) || "global"
 
-  // ========================================
-  // Chapter 8-1: Markdown Rendering
-  // ========================================
   function renderMarkdownSafe(text) {
     const html = marked.parse(text || "")
     return DOMPurify.sanitize(html, { USE_PROFILES: { html: true } })
   }
 
-  // ========================================
-  // Chapter 8-2: Code Highlight + Copy
-  // ========================================
   function enhanceCodeBlocks(container) {
     container.querySelectorAll('pre code').forEach((block) => {
       hljs.highlightElement(block)
@@ -344,9 +361,6 @@
     pre.appendChild(btn)
   }
 
-  // ========================================
-  // Chapter 8-3: Streaming Optimization
-  // ========================================
   function withProvisionalFences(text) {
     const fenceCount = (text.match(/```/g) || []).length
     return fenceCount % 2 === 1 ? text + "\n```" : text
@@ -358,9 +372,6 @@
     enhanceCodeBlocks(el)
   }
 
-  // ========================================
-  // Chapter 8-4: Token Counter
-  // ========================================
   function estimateTokens(s) {
     return Math.ceil((s || '').length / 3.5)
   }
@@ -369,7 +380,6 @@
     tokenCounter.textContent = `~${estimateTokens(area.value)} tok`
   })
 
-  // メッセージ1行（交互に左右）
   function newRow(sender) {
     const row = document.createElement("div")
     row.className = "flex w-full " + (sender === "user" ? "justify-end" : "justify-start")
@@ -392,50 +402,44 @@
     return bubble
   }
 
-  function lastAiBubble() {
-    const nodes = log.querySelectorAll('.role-assistant')
-    if (nodes.length === 0) return null
-    return nodes[nodes.length - 1].nextElementSibling
-  }
-
   let assembling = ""
   let generating = false
   let aiMsgEl
 
-  subscribeChat(cid, (payload) => {
-    if (payload.event === "start") {
-      generating = true
-      stopBtn.disabled = false
-      aiMsgEl = newRow("assistant")
-      typingEl.classList.remove("hidden")
-      assembling = ""
-      return
-    }
-    if (payload.event === "delta") {
-      assembling += payload.body || ""
-      renderAssistantLive(aiMsgEl, assembling)
-      log.scrollTop = log.scrollHeight
-      return
-    }
-    if (payload.event === "done") {
-      generating = false
-      stopBtn.disabled = true
-      typingEl.classList.add("hidden")
-      renderAssistantLive(aiMsgEl, assembling)
-      return
-    }
-    if (payload.event === "error") {
-      generating = false
-      stopBtn.disabled = true
-      typingEl.classList.add("hidden")
-      appendErrorRetry(payload.body)
-      return
-    }
-  })
+  // Get subscribeChat from global scope (set by chat_channel.js)
+  if (window.subscribeChat) {
+    window.subscribeChat(cid, (payload) => {
+      if (payload.event === "start") {
+        generating = true
+        stopBtn.disabled = false
+        aiMsgEl = newRow("assistant")
+        typingEl.classList.remove("hidden")
+        assembling = ""
+        return
+      }
+      if (payload.event === "delta") {
+        assembling += payload.body || ""
+        renderAssistantLive(aiMsgEl, assembling)
+        log.scrollTop = log.scrollHeight
+        return
+      }
+      if (payload.event === "done") {
+        generating = false
+        stopBtn.disabled = true
+        typingEl.classList.add("hidden")
+        renderAssistantLive(aiMsgEl, assembling)
+        return
+      }
+      if (payload.event === "error") {
+        generating = false
+        stopBtn.disabled = true
+        typingEl.classList.add("hidden")
+        appendErrorRetry(payload.body)
+        return
+      }
+    })
+  }
 
-  // ========================================
-  // Chapter 8-6: Error Retry
-  // ========================================
   function appendErrorRetry(reason) {
     const row = document.createElement("div")
     row.className = "flex w-full justify-start"
@@ -462,9 +466,6 @@
     log.scrollTop = log.scrollHeight
   }
 
-  // ========================================
-  // Chapter 8-5: Regenerate & Edit Last
-  // ========================================
   btnRegen.addEventListener("click", async () => {
     const token = form.querySelector('input[name="authenticity_token"]').value
     const body = new URLSearchParams({ conversation_id: cid })
@@ -487,7 +488,6 @@
     }
   })
 
-  // IMEガード：変換確定で送信されないようにする
   let composing = false
   area.addEventListener("compositionstart", () => composing = true)
   area.addEventListener("compositionend",   () => composing = false)
@@ -504,7 +504,6 @@
     const prev = btn.innerHTML
     btn.disabled = true
     btn.innerHTML = "送信中..."
-    // 自分の発言を即時描画（Markdown 対応）
     const mine = newRow("user")
     mine.innerHTML = renderMarkdownSafe((fd.get("message[content]") || "").toString())
     try {
@@ -520,7 +519,6 @@
     }
   })
 
-  // 停止ボタン
   stopForm.addEventListener("submit", async (e) => {
     e.preventDefault()
     if (!generating) return
@@ -529,16 +527,17 @@
     await fetch(stopForm.action, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": token }, body })
   })
 
-  // ========================================
-  // Chapter 11: File Attachment Handler
-  // ========================================
+  // File Attachment Handler
   const fileInput = document.getElementById("file-input")
   const fileBtn = document.getElementById("file-btn")
   const fileCount = document.getElementById("file-count")
 
-  fileBtn.addEventListener("click", () => fileInput.click())
-  fileInput.addEventListener("change", () => {
-    const count = fileInput.files.length
-    fileCount.textContent = count > 0 ? `${count} files` : ""
-  })
+  if (fileBtn && fileInput) {
+    fileBtn.addEventListener("click", () => fileInput.click())
+    fileInput.addEventListener("change", () => {
+      const count = fileInput.files.length
+      fileCount.textContent = count > 0 ? `${count} files` : ""
+    })
+  }
+})
 </script>
